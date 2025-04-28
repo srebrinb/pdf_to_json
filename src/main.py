@@ -100,7 +100,7 @@ def main():
 
     pdf_processor = PdfProcessor()
     extracted_text = pdf_processor.extract_text(pdf_path)
-    pdf_processor.extract_text_to_file(pdf_path, "output.txt")
+
     # Decode the text from windows-1251 and re-encode to UTF-8
     try:
         extracted_text = extracted_text.encode('latin1').decode('windows-1251')
