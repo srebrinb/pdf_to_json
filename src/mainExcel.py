@@ -17,7 +17,8 @@ def parse_text_to_excel(extracted_text, excel_path, pdf_path):
     find_str_con2 = "Общо сума"
     find_str_con3 = "Надбавка за използвана реактивна енергия"
     match_sum = False
-
+    # Извличане само на името на PDF файла
+    pdf_name = os.path.basename(pdf_path)
     for line in extracted_text.splitlines():
         line = line.strip()
         if line.startswith("Наименование на обекта:"):
@@ -75,7 +76,7 @@ def parse_text_to_excel(extracted_text, excel_path, pdf_path):
             if object_code not in rows_by_object_code:
                 rows_by_object_code[object_code] = []
             rows_by_object_code[object_code].append([
-                pdf_path, object_code, object_name, current_object_address,
+                pdf_name, 
                 current_month, current_energy_sum, current_energy_sum3, current_energy_sum2
             ])
             current_energy_sum = 0.0
@@ -94,23 +95,31 @@ def parse_text_to_excel(extracted_text, excel_path, pdf_path):
             sheet = workbook[object_code]
         else:
             sheet = workbook.create_sheet(title=object_code[:31])  # Ограничение на имената на sheet-овете до 31 символа
-            sheet.append(["From File", "Код на обекта", "Име на обекта", "Адрес на обекта", "За месец", "активна мощност", "реактивна мощност", find_str_con2, "обща мощност","коефициент на мощността (cosφ)","CO₂ емисии (kg)","напрежение","ток", "фазов ъгъл"])  # Заглавен ред
+        #    sheet.append(["From File", "Код на обекта", "Име на обекта", "Адрес на обекта", "За месец", "активна мощност", "реактивна мощност", find_str_con2, "обща мощност","коефициент на мощността (cosφ)","CO₂ емисии (kg)","напрежение","ток", "фазов ъгъл"])  # Заглавен ред
+        # Добавяне на антетка
+        sheet.append(["Код на обекта:", object_code])
+        sheet.append(["Име на обекта:", object_name])
+        sheet.append(["Адрес на обекта:", current_object_address])
+        sheet.append([])  # Празен ред за разделяне
+
+        # Добавяне на заглавия на таблицата
+        sheet.append(["PDF Path", "За месец", "Активна мощност", "Реактивна мощност", find_str_con2, "Обща мощност","Коефициент на мощността (cosφ)","CO₂ емисии (kg)","Напрежение","Ток", "Фазов ъгъл"])
 
         # Добавяне на новите редове към съществуващия sheet
         for row in rows:
             sheet.append(row)
 
         # Добавяне на формулата в последната колона
-        for row_idx in range(2, sheet.max_row + 1):  # Пропускаме заглавния ред
-            energy_sum_cell = f"F{row_idx}"  # Колона F за current_energy_sum
-            energy_sum3_cell = f"G{row_idx}"  # Колона G за current_energy_sum3
-            formula_cell = f"I{row_idx}"  # Колона I за формулата
+        for row_idx in range(6, sheet.max_row + 1):  # Пропускаме заглавния ред
+            energy_sum_cell = f"C{row_idx}"  # Колона F за current_energy_sum
+            energy_sum3_cell = f"D{row_idx}"  # Колона G за current_energy_sum3
+            formula_cell = f"F{row_idx}"  # Колона I за формулата
             sheet[formula_cell] = f"=SQRT({energy_sum_cell}^2 + {energy_sum3_cell}^2)"
-            sheet[f"J{row_idx}"] = f"={energy_sum_cell} / SQRT({energy_sum_cell}^2 +{energy_sum3_cell}^2 )"
-            sheet[f"K{row_idx}"] = f"= SQRT({energy_sum_cell}^2 + {energy_sum3_cell}^2) * 0.3"
-            sheet[f"L{row_idx}"] = f"=230"
-            sheet[f"M{row_idx}"] = f"= {formula_cell}/L{row_idx}"
-            sheet[f"N{row_idx}"] = f"=DEGREES(ACOS({energy_sum_cell}/{formula_cell}))"
+            sheet[f"G{row_idx}"] = f"={energy_sum_cell} / SQRT({energy_sum_cell}^2 +{energy_sum3_cell}^2 )"
+            sheet[f"H{row_idx}"] = f"= SQRT({energy_sum_cell}^2 + {energy_sum3_cell}^2) * 0.3"
+            sheet[f"I{row_idx}"] = f"=230"
+            sheet[f"J{row_idx}"] = f"= {formula_cell}/I{row_idx}"
+            sheet[f"K{row_idx}"] = f"=DEGREES(ACOS({energy_sum_cell}/{formula_cell}))"
 
     if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
         del workbook["Sheet"]  # Премахване на празния sheet, ако съществува
