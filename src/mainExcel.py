@@ -3,8 +3,8 @@ import argparse
 from openpyxl import Workbook, load_workbook
 from pdf_processor import PdfProcessor
 
-def parse_text_to_excel(extracted_text, excel_path,pdf_path):
-    rows = []
+def parse_text_to_excel(extracted_text, excel_path, pdf_path):
+    rows_by_object_code = {}
     current_object_name_old = None
     current_object_name = None
     current_object_address = None
@@ -17,94 +17,101 @@ def parse_text_to_excel(extracted_text, excel_path,pdf_path):
     find_str_con2 = "Общо сума"
     find_str_con3 = "Надбавка за използвана реактивна енергия"
     match_sum = False
+
     for line in extracted_text.splitlines():
         line = line.strip()
-        # Проверка за "Наименование на обекта:"
         if line.startswith("Наименование на обекта:"):
             current_object_name = line.replace("Наименование на обекта:", "").strip()
-            # Разделяне на current_object_name в две части
             if current_object_name:
-                parts = current_object_name.rsplit(" ", 1)  # Разделяне по последния интервал
+                parts = current_object_name.rsplit(" ", 1)
                 if len(parts) == 2:
-                    object_code = parts[1]  # Последният стринг
-                    object_name = parts[0]  # Началото
+                    object_code = parts[1]
+                    object_name = parts[0]
                 else:
-                    object_code = current_object_name  # Ако няма интервал, цялото име е код
-                    object_name = ""  # Няма начало
-        # Проверка за "Адрес на обекта: "
+                    object_code = current_object_name
+                    object_name = ""
         elif line.startswith("Адрес на обекта: "):
             current_object_address = line.replace("Адрес на обекта: ", "").strip()
             current_object_address = current_object_address.replace("Кодов номер:", "").strip()
-        # Проверка за "За месец:"
         elif line.startswith(find_date_doc):
             current_month = line.replace(find_date_doc, "").strip()
 
-
-        # Проверка за "Електрическа енергия"
         if line.startswith(find_str_con1):
             line = line.replace(find_str_con1, "").strip()
             if "кВтч" in line:
                 energy_part = line.split("кВтч")[0].strip()
-                energy_part = energy_part.replace(" ", "")  # Премахване на интервалите
-                energy_part = energy_part[::-1]  # Обръщане на числото
+                energy_part = energy_part.replace(" ", "")
+                energy_part = energy_part[::-1]
                 energy_part = energy_part.lstrip("0")
                 try:
-                    current_energy_sum += float(energy_part)  # Добавяне към сумата
+                    current_energy_sum += float(energy_part)
                     match_sum = True
                 except ValueError:
-                    pass  # Игнориране на грешки при преобразуване
-        # Проверка за "Достъп средно/ниско напрежение"
+                    pass
         if line.startswith(find_str_con2):
             line = line.replace(find_str_con2, "").strip()
             line = line.replace(",", "").strip()
             energy_part = line
-            energy_part = energy_part.replace(" ", "")  # Премахване на интервалите
-            energy_part = energy_part[::-1]  # Обръщане на числото
+            energy_part = energy_part.replace(" ", "")
+            energy_part = energy_part[::-1]
             energy_part = energy_part.lstrip("0")
             try:
-                current_energy_sum2 += float(energy_part)  # Добавяне към сумата
-            except ValueError:
-                pass  # Игнориране на грешки при преобразуване
-        if line.startswith(find_str_con3):
-            line = line.replace(find_str_con3, "").strip()
-            # Извличане на текста до "кВтч"
-            if "кВАрч" in line:
-                energy_part = line.split("кВАрч")[0].strip()
-                # Премахване на интервалите и форматиране на числото
-                energy_part = energy_part.replace(" ", "")  # Премахване на интервалите
-                energy_part = energy_part[::-1]  # Обръщане на числото
-                energy_part = energy_part.lstrip("0")
-            try:
-                current_energy_sum3 += float(energy_part)  # Добавяне към сумата
+                current_energy_sum2 += float(energy_part)
             except ValueError:
                 pass
-        # Ако има текущо "Наименование на обекта", "За месец" и "Електрическа енергия", добавяме ред
+        if line.startswith(find_str_con3):
+            line = line.replace(find_str_con3, "").strip()
+            if "кВАрч" in line:
+                energy_part = line.split("кВАрч")[0].strip()
+                energy_part = energy_part.replace(" ", "")
+                energy_part = energy_part[::-1]
+                energy_part = energy_part.lstrip("0")
+            try:
+                current_energy_sum3 += float(energy_part)
+            except ValueError:
+                pass
 
         if current_energy_sum2:
-            rows.append([pdf_path,object_code, object_name, current_object_address, current_month, current_energy_sum,current_energy_sum3, current_energy_sum2])
-            current_energy_sum = 0.0  # Нулираме сумата, за да избегнем дублиране
-            current_energy_sum3 = 0.0  # Нулираме сумата, за да избегнем дублиране
-            current_energy_sum2 = 0.0  # Нулираме сумата, за да избегнем дублиране
+            if object_code not in rows_by_object_code:
+                rows_by_object_code[object_code] = []
+            rows_by_object_code[object_code].append([
+                pdf_path, object_code, object_name, current_object_address,
+                current_month, current_energy_sum, current_energy_sum3, current_energy_sum2
+            ])
+            current_energy_sum = 0.0
+            current_energy_sum3 = 0.0
+            current_energy_sum2 = 0.0
+            match_sum = False
 
-            match_sum = False  # Нулираме флага, за да избегнем дублиране
-
-    # Проверка дали файлът съществува
-    file_exists = os.path.exists(excel_path)
-
-    if file_exists:
+    # Зареждане на съществуващия Excel файл или създаване на нов
+    if os.path.exists(excel_path):
         workbook = load_workbook(excel_path)
-        sheet = workbook.active
     else:
         workbook = Workbook()
-        sheet = workbook.active
-        # Добавяне на заглавия, ако файлът не съществува
-        sheet.append(["From File","Код на обекта", "Име на обекта", "Адрес на обекта", "За месец", find_str_con1,find_str_con3, find_str_con2])
 
-    # Добавяне на редовете
-    for row in rows:
-        sheet.append(row)
+    for object_code, rows in rows_by_object_code.items():
+        if object_code in workbook.sheetnames:
+            sheet = workbook[object_code]
+        else:
+            sheet = workbook.create_sheet(title=object_code[:31])  # Ограничение на имената на sheet-овете до 31 символа
+            sheet.append(["From File", "Код на обекта", "Име на обекта", "Адрес на обекта", "За месец", "активна мощност", "реактивна мощност", find_str_con2, "обща мощност","коефициент на мощността (cosφ)","CO₂ емисии (kg)"])
 
-    # Запис на Excel файла
+        # Добавяне на новите редове към съществуващия sheet
+        for row in rows:
+            sheet.append(row)
+
+        # Добавяне на формулата в последната колона
+        for row_idx in range(2, sheet.max_row + 1):  # Пропускаме заглавния ред
+            energy_sum_cell = f"F{row_idx}"  # Колона F за current_energy_sum
+            energy_sum3_cell = f"G{row_idx}"  # Колона G за current_energy_sum3
+            formula_cell = f"I{row_idx}"  # Колона I за формулата
+            sheet[formula_cell] = f"=SQRT({energy_sum_cell}^2 + {energy_sum3_cell}^2)"
+            sheet[f"J{row_idx}"] = f"={energy_sum_cell} / SQRT({energy_sum_cell}^2 +{energy_sum3_cell}^2 )"
+            sheet[f"K{row_idx}"] = f"= SQRT({energy_sum_cell}^2 + {energy_sum3_cell}^2) * 0.3"
+
+    if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
+        del workbook["Sheet"]  # Премахване на празния sheet, ако съществува
+
     workbook.save(excel_path)
 
 def main():
@@ -137,7 +144,7 @@ def main():
 
     if extracted_text:
         # Парсиране на текста и запис в Excel
-        parse_text_to_excel(extracted_text, excel_path,pdf_path)
+        parse_text_to_excel(extracted_text, excel_path, pdf_path)
         print(f"Data has been written to {excel_path}")
     else:
         print("No text extracted from the PDF.")
