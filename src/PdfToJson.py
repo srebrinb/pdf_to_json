@@ -1,186 +1,35 @@
-from datetime import datetime
-from os import name
-import re
+import argparse
 import json
+from datetime import datetime
+import os   
+import InvToJson
+from pdf_processor import PdfProcessor
 
-bg_months = {
-    'Януари': 'January',
-    'Февруари': 'February',
-    'Март': 'March',
-    'Април': 'April',
-    'Май': 'May',
-    'Юни': 'June',
-    'Юли': 'July',
-    'Август': 'August',
-    'Септември': 'September',
-    'Октомври': 'October',
-    'Ноември': 'November',
-    'Декември': 'December',
-    'януари': 'january',
-    'февруари': 'february',
-    'март': 'march',
-    'април': 'april',
-    'май': 'may',
-    'юни': 'june',
-    'юли': 'july',
-    'август': 'august',
-    'септември': 'september',
-    'октомври': 'october',
-    'ноември': 'november',
-    'декември': 'december'
-}
-# Регулярен израз за намиране на нужните полета
-address_pattern = r"Адрес на обекта: (.*)"
-code_pattern = r"Кодов номер:(\s*)"
-name_pattern = r"Наименование на обекта: (.*)"
-quantity_price_pattern = r"(.*?)(\d[\d\s.]+) кВтч\s*(\d+[\d\s.,]+)\s*"
-total_amount_pattern = r"Общо сума (.*)"
-period_pattern = r"За (.*) подпериод "
-month_pattern = r"Основание: Електрическа енергия за месец (.*)"
-def bg_to_en_month(date_str):
-    for bg, en in bg_months.items():
-        if bg in date_str:
-            return date_str.replace(bg, en)
-    return date_str
 
-def fixSum(sum):
-    """
-    Функция за поправка на суми, премахва ненужните нули и форматира числата.
-    """
-    if not sum:
-        return 0.0
-    sum = sum.replace(" ", "")
-    sum = sum.replace("\n", "")
-    sum = sum.replace(",", ".")
-    sum = sum[::-1]
-    sum = sum.lstrip("0")
-    try:
-        return float(sum)
-    except ValueError:
-        return 0.00001
-def parse_detail_rows(block):
-    """
-    Функция за извличане на детайлни редове от блок.
-    """
-    rows = []
-    quantities = re.findall(quantity_price_pattern, block)
-    for textDetail, quantity, tmppricetotal in quantities:
-        # Обработка на стойностите
-        quantity_value = fixSum(quantity)
-        
-        match = re.search(r"(\d{5}\.\d)\s*([0-9\s.,]+)", tmppricetotal.replace(" ", "").replace(",", ""))
-        if match:
-            price = match.group(1)
-            total = match.group(2)
+def main():
+    parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to a JSON file.")
+    parser.add_argument("json_path", nargs="?", default="test.json", help="Path to the output JSON file.")
+    parser.add_argument("pdf_directory", nargs="?", default="StefanP", help="Path to the directory containing PDF files.")
+    args = parser.parse_args()
 
-        price_value = fixSum(price) 
-        total_value = fixSum(total)
-        
-        # Изчисляване на стойностите
-        total_calculated = quantity_value * price_value
-        
-        # Добавяне на данни за отчетния период
-        row_data = {
-            'text': textDetail.strip(),
-            'quantity': quantity_value,
-            'unit_price': price_value,
-            'total': total_value,
-            'calculated_total': round(total_calculated, 2),
-            'match': abs(total_value - total_calculated) < 0.01
-        }
-        rows.append(row_data)
-    return rows
-# Функция за обработка на данните от фактурата
-def parse_factura(file_path):
-    with open(file_path, 'r', encoding='utf-8') as file:
-        content = file.read()
-    
-    # Разделяне на съдържанието на блокове
-    blocks = content.split("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
-    invoice_data=[]
-    factura_data = []
+    if not os.path.isdir(args.pdf_directory):
+        print("The specified directory does not exist.")
+        return
+    directory=args.pdf_directory
+    output_file = args.json_path
+    factura_data = {"invoices": []}
+    for pdf_file in os.listdir(directory):
+        if pdf_file.endswith(".pdf"):
+            pdf_path = os.path.join(directory, pdf_file)
 
-    I=0
-    # Парсване на всеки блок
-    month_value = ""
-    for block in blocks:
-        block_data = {}
-        I+=1
-        if I == 1:
-            month = re.search(month_pattern, block)
-            month_value= month.group(1).strip()
-            inv_rows= parse_detail_rows(block)
-            invoice_data.append({"Invoice":{"month": month_value,  'rows': inv_rows }})
-
-            continue
-        
-        
-        # Извличане на адрес, код и наименование
-        address = re.search(address_pattern, block)
-        
-        name = re.search(name_pattern, block)
-
-        if address and   name:
-            block_data['address'] = address.group(1).strip()
-            parts = name.group(1).strip().rsplit(" ", 1)
-            if len(parts) == 2:
-                block_data['code'] = parts[1]
-                block_data['name'] = parts[0]
-            else:
-                block_data['code'] = name.group(1).strip()
-                block_data['name'] = ""
-            
-        block_data['month']=month_value
-        current_month = bg_to_en_month(month_value)
-        current_month = datetime.strptime(current_month, "%B %Y") 
-        block_data['std_month']= current_month.strftime("%Y-%m-%d")  # и
-        # Извличане на отчетни периоди и стойности
-        block_data['periods']= []
-        # Разделяне на съдържанието на блокове
-        blocks_period = block.split("Наименование Количество Ед. цена(лв.) Стойност(лв.)")    
-        with open("tmp P" + str(I) + ".txt", "w", encoding="utf-8") as f:
-            f.write(">>>>\n".join(blocks_period))
-        tmpblock_data = {}
-        y= 0
-        for block_period in blocks_period:
-            tmpblock_data = {}
-            y+=1
-            if y == 1:continue
-            
-           
-            total_amount = re.search(total_amount_pattern, block_period)
-            if total_amount:
-                total_amount_value = fixSum(total_amount.group(1).strip())
-            else:
-                total_amount_value = -0.042
-            print("Total amount:", total_amount_value, "Block:", I*1000+y)
-
-            period_data = re.search(period_pattern, block_period)
-            if period_data:
-                period_data_value = period_data.group(1).strip()
-            else:
-                period_data_value =  "Не е посочен период"
-            tmpblock_data["name"] =  period_data_value
-            tmpblock_data["total_amount"] = total_amount_value
-            print("Total amount:", total_amount_value,"period_data_value",period_data_value, "Block:", I*1000+y)
-            rows = parse_detail_rows(block_period)
-
-            tmpblock_data["rows"] = rows
-            block_data['periods'].append(tmpblock_data)
-        # Добавяне на текущия блок към основния списък
-        factura_data.append(block_data)
-    invoice_data.append({'objects': factura_data})
-    return invoice_data
-
-# Записване на резултата в JSON файл
-def save_to_json(data, output_file):
-    with open(output_file, 'w', encoding='utf-8') as json_file:
-        json.dump(data, json_file, ensure_ascii=False, indent=4)
-
-# Път към входния файл и изходния файл
-input_file = '0417017410_6000020124_signed.pdf.txt' # Заменете с пътя към вашия текстов файл
-output_file = 'factura_output.json'
-
-# Извикване на функцията
-factura_data = parse_factura(input_file)
-save_to_json(factura_data, output_file)
+            # Симулиране на извличане на текст от PDF (заменете с реална логика)
+            #extracted_text = simulate_pdf_extraction(pdf_path)
+            pdf_processor = PdfProcessor()
+            extracted_text = pdf_processor.extract_text(pdf_path)      
+            extracted_text = extracted_text.encode('latin1').decode('windows-1251')
+            factura_data['invoices'].append({"filename": pdf_file})
+            # Извикване на функцията
+            factura_data = InvToJson.parse_factura(extracted_text, factura_data)
+    InvToJson.save_to_json(factura_data, output_file)
+if __name__ == "__main__":
+    main()

@@ -151,11 +151,7 @@ def process_pdfs(directory):
                         match_sum = False
                 # Записване на блоковете във файл
                 blocks.remove(blocks[-1])  # Премахване на последния празен блок
-                with open("arr"+txt_filename, "w", encoding="utf-8") as f:
-                    for block in blocks:
-                        f.write("\n-----block "+str(blocks.index(block))+"-----\n"  )
-                        if block:
-                            f.write(block)
+
     return data_by_object_code
 
 def generate_excel(data_by_object_code, excel_path):
