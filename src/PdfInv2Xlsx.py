@@ -68,9 +68,17 @@ def process_pdfs(directory):
                     line = line.strip()
                     if line.startswith("Наименование на обекта:"):
                         current_object_name = line.replace("Наименование на обекта:", "").strip()
-                        object_code = current_object_name.split()[-1]  # Примерен код
+                        if current_object_name:
+                            parts = current_object_name.rsplit(" ", 1)
+                            if len(parts) == 2:
+                                object_code = parts[1]
+                                object_name = parts[0]
+                            else:
+                                object_code = current_object_name
+                                object_name = ""
                     elif line.startswith("Адрес на обекта:"):
-                        current_object_address = line.replace("Адрес на обекта:", "").strip()
+                        current_object_address = line.replace("Адрес на обекта: ", "").strip()
+                        current_object_address = current_object_address.replace("Кодов номер:", "").strip()
                     elif line.startswith("Основание: Електрическа енергия за месец"):
                         current_month = line.replace("Основание: Електрическа енергия за месец", "").strip()
                         print("Обработване на месец:", current_month)
@@ -111,16 +119,20 @@ def process_pdfs(directory):
                             current_energy_sum3 += float(energy_part)
                         except ValueError:
                             pass
-
-                if object_code not in data_by_object_code:
-                    data_by_object_code[object_code] = {
-                        "object_name": current_object_name,
-                        "object_address": current_object_address,
-                        "rows": []
-                    }
-                data_by_object_code[object_code]["rows"].append([
-                    pdf_file, current_month, current_energy_sum, current_energy_sum3
-                ])
+                    if match_sum:
+                        if object_code not in data_by_object_code:
+                            data_by_object_code[object_code] = {
+                                "object_name": current_object_name,
+                                "object_address": current_object_address,
+                                "rows": []
+                            }
+                        data_by_object_code[object_code]["rows"].append([
+                            pdf_file, current_month, current_energy_sum, current_energy_sum3
+                        ])
+                        current_energy_sum = 0.0
+                        current_energy_sum3 = 0.0
+                        current_energy_sum2 = 0.0
+                        match_sum = False
 
     return data_by_object_code
 
@@ -178,8 +190,8 @@ def simulate_pdf_extraction(pdf_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
-    parser.add_argument("excel_path", nargs="?", default="StefanP.xlsx", help="Path to the output Excel file.")
-    parser.add_argument("pdf_directory", nargs="?", default="StefanP", help="Path to the directory containing PDF files.")
+    parser.add_argument("excel_path", nargs="?", default="test.xlsx", help="Path to the output Excel file.")
+    parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
     if not os.path.isdir(args.pdf_directory):
