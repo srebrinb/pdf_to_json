@@ -1,3 +1,4 @@
+import json
 import os
 import argparse
 from openpyxl import Workbook, load_workbook
@@ -52,6 +53,12 @@ def process_pdfs(directory):
             pdf_processor = PdfProcessor()
             extracted_text = pdf_processor.extract_text(pdf_path)      
             extracted_text = extracted_text.encode('latin1').decode('windows-1251')
+            print("############################################")
+            print("Обработване на PDF файл:", pdf_file)
+            # Запис във файл
+            txt_filename = pdf_file + ".txt"
+            with open(txt_filename, "w", encoding="utf-8") as f:
+                f.write(extracted_text)
             if extracted_text:
                 current_object_name = None
                 current_object_address = None
@@ -64,8 +71,16 @@ def process_pdfs(directory):
                 find_str_con2 = "Общо сума"
                 find_str_con3 = "Надбавка за използвана реактивна енергия"
                 match_sum = False
+                blocks = [[]]
+                blocks.append([])  # Начало на нов блок
+                blockindex = 0
                 for line in extracted_text.splitlines():
                     line = line.strip()
+                    blocks[blockindex].append(line)
+                    if  line.startswith("- - - - "):
+                        blockindex += 1
+                        blocks.append([])
+
                     if line.startswith("Наименование на обекта:"):
                         current_object_name = line.replace("Наименование на обекта:", "").strip()
                         if current_object_name:
@@ -94,7 +109,7 @@ def process_pdfs(directory):
                             energy_part = energy_part.lstrip("0")
                             try:
                                 current_energy_sum += float(energy_part)
-                                match_sum = True
+                                
                             except ValueError:
                                 pass
                     elif line.startswith(find_str_con2):
@@ -106,6 +121,7 @@ def process_pdfs(directory):
                         energy_part = energy_part.lstrip("0")
                         try:
                             current_energy_sum2 += float(energy_part)
+                            match_sum = True
                         except ValueError:
                             pass
                     elif line.startswith(find_str_con3):
@@ -119,7 +135,7 @@ def process_pdfs(directory):
                             current_energy_sum3 += float(energy_part)
                         except ValueError:
                             pass
-                    if match_sum:
+                    if  match_sum and line.startswith("- - - - "):
                         if object_code not in data_by_object_code:
                             data_by_object_code[object_code] = {
                                 "object_name": current_object_name,
@@ -133,7 +149,13 @@ def process_pdfs(directory):
                         current_energy_sum3 = 0.0
                         current_energy_sum2 = 0.0
                         match_sum = False
-
+                # Записване на блоковете във файл
+                blocks.remove(blocks[-1])  # Премахване на последния празен блок
+                with open("arr"+txt_filename, "w", encoding="utf-8") as f:
+                    for block in blocks:
+                        f.write("\n-----block "+str(blocks.index(block))+"-----\n"  )
+                        if block:
+                            f.write(block.join("\n") )
     return data_by_object_code
 
 def generate_excel(data_by_object_code, excel_path):
@@ -156,21 +178,21 @@ def generate_excel(data_by_object_code, excel_path):
         for row in data["rows"]:
             sheet.append([row[0], row[1].strftime("%Y-%m"), row[2], row[3]])
 
-        # Създаване на графика
-        chart = LineChart()
-        chart.title = "Активна и Реактивна мощност по месеци"
-        chart.style = 13
-        chart.x_axis.title = "Месец"
-        chart.y_axis.title = "Мощност (W)"
+        # # Създаване на графика
+        # chart = LineChart()
+        # chart.title = "Активна и Реактивна мощност по месеци"
+        # chart.style = 13
+        # chart.x_axis.title = "Месец"
+        # chart.y_axis.title = "Мощност (W)"
 
-        # Данни за графиката
-        data = Reference(sheet, min_col=3, max_col=4, min_row=6, max_row=sheet.max_row)
-        categories = Reference(sheet, min_col=2, min_row=6, max_row=sheet.max_row)  # Колона B за "Месец"
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(categories)
+        # # Данни за графиката
+        # data = Reference(sheet, min_col=3, max_col=4, min_row=6, max_row=sheet.max_row)
+        # categories = Reference(sheet, min_col=2, min_row=6, max_row=sheet.max_row)  # Колона B за "Месец"
+        # chart.add_data(data, titles_from_data=True)
+        # chart.set_categories(categories)
 
-        # Поставяне на графиката под таблицата
-        sheet.add_chart(chart, f"A{sheet.max_row + 2}")
+        # # Поставяне на графиката под таблицата
+        # sheet.add_chart(chart, f"A{sheet.max_row + 2}")
 
     # Премахване на празния sheet, ако съществува
     if "Sheet" in workbook.sheetnames:
@@ -203,6 +225,8 @@ def main():
 
     # Генериране на Excel файла
     generate_excel(data_by_object_code, args.excel_path)
-
+    # След като имаш data_by_object_code:
+    with open("output.json", "w", encoding="utf-8") as f:
+        json.dump(data_by_object_code, f, ensure_ascii=False, default=str, indent=2)
 if __name__ == "__main__":
     main()
