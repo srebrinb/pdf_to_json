@@ -2,7 +2,42 @@ import os
 import argparse
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import LineChart, Reference
+import locale
 from datetime import datetime
+from pdf_processor import PdfProcessor
+# locale.setlocale(locale.LC_TIME, 'bg_BG.UTF-8')  # Set to Bulgarian locale
+bg_months = {
+    'Януари': 'January',
+    'Февруари': 'February',
+    'Март': 'March',
+    'Април': 'April',
+    'Май': 'May',
+    'Юни': 'June',
+    'Юли': 'July',
+    'Август': 'August',
+    'Септември': 'September',
+    'Октомври': 'October',
+    'Ноември': 'November',
+    'Декември': 'December',
+    'януари': 'january',
+    'февруари': 'february',
+    'март': 'march',
+    'април': 'april',
+    'май': 'may',
+    'юни': 'june',
+    'юли': 'july',
+    'август': 'august',
+    'септември': 'september',
+    'октомври': 'october',
+    'ноември': 'november',
+    'декември': 'december'
+}
+
+def bg_to_en_month(date_str):
+    for bg, en in bg_months.items():
+        if bg in date_str:
+            return date_str.replace(bg, en)
+    return date_str
 
 def process_pdfs(directory):
     """Обработва всички PDF файлове и съхранява данните в речник."""
@@ -13,15 +48,22 @@ def process_pdfs(directory):
             pdf_path = os.path.join(directory, pdf_file)
 
             # Симулиране на извличане на текст от PDF (заменете с реална логика)
-            extracted_text = simulate_pdf_extraction(pdf_path)
-
+            #extracted_text = simulate_pdf_extraction(pdf_path)
+            pdf_processor = PdfProcessor()
+            extracted_text = pdf_processor.extract_text(pdf_path)      
+            extracted_text = extracted_text.encode('latin1').decode('windows-1251')
             if extracted_text:
                 current_object_name = None
                 current_object_address = None
                 current_month = None
                 current_energy_sum = 0.0
+                current_energy_sum2 = 0.0
                 current_energy_sum3 = 0.0
-
+                find_date_doc = "Основание: Електрическа енергия за месец"
+                find_str_con1 = "Достъп високо напрежение"
+                find_str_con2 = "Общо сума"
+                find_str_con3 = "Надбавка за използвана реактивна енергия"
+                match_sum = False
                 for line in extracted_text.splitlines():
                     line = line.strip()
                     if line.startswith("Наименование на обекта:"):
@@ -31,11 +73,44 @@ def process_pdfs(directory):
                         current_object_address = line.replace("Адрес на обекта:", "").strip()
                     elif line.startswith("Основание: Електрическа енергия за месец"):
                         current_month = line.replace("Основание: Електрическа енергия за месец", "").strip()
+                        print("Обработване на месец:", current_month)
+                        current_month = bg_to_en_month(current_month)
+
                         current_month = datetime.strptime(current_month, "%B %Y")  # Преобразуване в дата
-                    elif "кВтч" in line:
-                        current_energy_sum = float(line.split()[0])  # Примерно извличане
-                    elif "кВАрч" in line:
-                        current_energy_sum3 = float(line.split()[0])  # Примерно извличане
+                    elif line.startswith(find_str_con1):
+                        line = line.replace(find_str_con1, "").strip()
+                        if "кВтч" in line:
+                            energy_part = line.split("кВтч")[0].strip()
+                            energy_part = energy_part.replace(" ", "")
+                            energy_part = energy_part[::-1]
+                            energy_part = energy_part.lstrip("0")
+                            try:
+                                current_energy_sum += float(energy_part)
+                                match_sum = True
+                            except ValueError:
+                                pass
+                    elif line.startswith(find_str_con2):
+                        line = line.replace(find_str_con2, "").strip()
+                        line = line.replace(",", "").strip()
+                        energy_part = line
+                        energy_part = energy_part.replace(" ", "")
+                        energy_part = energy_part[::-1]
+                        energy_part = energy_part.lstrip("0")
+                        try:
+                            current_energy_sum2 += float(energy_part)
+                        except ValueError:
+                            pass
+                    elif line.startswith(find_str_con3):
+                        line = line.replace(find_str_con3, "").strip()
+                        if "кВАрч" in line:
+                            energy_part = line.split("кВАрч")[0].strip()
+                            energy_part = energy_part.replace(" ", "")
+                            energy_part = energy_part[::-1]
+                            energy_part = energy_part.lstrip("0")
+                        try:
+                            current_energy_sum3 += float(energy_part)
+                        except ValueError:
+                            pass
 
                 if object_code not in data_by_object_code:
                     data_by_object_code[object_code] = {
@@ -103,8 +178,8 @@ def simulate_pdf_extraction(pdf_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
-    parser.add_argument("excel_path", help="Path to the output Excel file.")
-    parser.add_argument("pdf_directory", help="Path to the directory containing PDF files.")
+    parser.add_argument("excel_path", nargs="?", default="StefanP.xlsx", help="Path to the output Excel file.")
+    parser.add_argument("pdf_directory", nargs="?", default="StefanP", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
     if not os.path.isdir(args.pdf_directory):
