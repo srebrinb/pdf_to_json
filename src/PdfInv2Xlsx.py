@@ -71,12 +71,12 @@ def process_pdfs(directory):
                 find_str_con2 = "Общо сума"
                 find_str_con3 = "Надбавка за използвана реактивна енергия"
                 match_sum = False
-                blocks = [[]]
+                blocks = []
                 blocks.append([])  # Начало на нов блок
                 blockindex = 0
                 for line in extracted_text.splitlines():
                     line = line.strip()
-                    blocks[blockindex].append(line)
+                    blocks[blockindex]+=line + "\n"
                     if  line.startswith("- - - - "):
                         blockindex += 1
                         blocks.append([])
@@ -155,7 +155,7 @@ def process_pdfs(directory):
                     for block in blocks:
                         f.write("\n-----block "+str(blocks.index(block))+"-----\n"  )
                         if block:
-                            f.write(block.join("\n") )
+                            f.write(block)
     return data_by_object_code
 
 def generate_excel(data_by_object_code, excel_path):
