@@ -97,10 +97,8 @@ def parse_factura(file_path):
     
     # Разделяне на съдържанието на блокове
     blocks = content.split("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
-    with open("tmp.txt", "w", encoding="utf-8") as f:
-        f.write("####\n".join(blocks))
+    invoice_data=[]
     factura_data = []
-
 
     I=0
     # Парсване на всеки блок
@@ -111,6 +109,9 @@ def parse_factura(file_path):
         if I == 1:
             month = re.search(month_pattern, block)
             month_value= month.group(1).strip()
+            inv_rows= parse_detail_rows(block)
+            invoice_data.append({"Invoice":{"month": month_value,  'rows': inv_rows }})
+
             continue
         
         
@@ -168,8 +169,8 @@ def parse_factura(file_path):
             block_data['periods'].append(tmpblock_data)
         # Добавяне на текущия блок към основния списък
         factura_data.append(block_data)
-    
-    return factura_data
+    invoice_data.append({'objects': factura_data})
+    return invoice_data
 
 # Записване на резултата в JSON файл
 def save_to_json(data, output_file):
