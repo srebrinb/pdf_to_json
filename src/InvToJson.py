@@ -30,7 +30,7 @@ bg_months = {
     'декември': 'december'
 }
 # Регулярен израз за намиране на нужните полета
-address_pattern = r"Адрес на обекта: (.*)"
+address_pattern = r"Адрес на обекта: (.*) Кодов номер:"
 code_pattern = r"Кодов номер:(\s*)"
 name_pattern = r"Наименование на обекта: (.*)"
 quantity_price_pattern = r"(.*?)(\d[\d\s.]+) кВтч\s*(\d+[\d\s.,]+)\s*"
@@ -51,19 +51,20 @@ def fixSum(sum):
         return 0.0
     sum = sum.replace(" ", "")
     sum = sum.replace("\n", "")
-    sum = sum.replace(",", ".")
+    sum = sum.replace(",", "")
     sum = sum[::-1]
     sum = sum.lstrip("0")
     try:
         return float(sum)
     except ValueError:
-        return 0.00001
+        return 0.0042
 def parse_detail_rows(block):
     """
     Функция за извличане на детайлни редове от блок.
     """
     rows = []
     quantities = re.findall(quantity_price_pattern, block)
+
     for textDetail, quantity, tmppricetotal in quantities:
         # Обработка на стойностите
         quantity_value = fixSum(quantity)
@@ -88,16 +89,31 @@ def parse_detail_rows(block):
             'calculated_total': round(total_calculated, 2),
             'match': abs(total_value - total_calculated) < 0.01
         }
+        #Calculatedtotal += total_value
         rows.append(row_data)
+    netService = re.search(r"Мрежови услуги ([0-9\s.,]+)", block)    
+    if netService:
+        netService_value = fixSum(netService.group(1))
+     #   Calculatedtotal += netService_value
+        rows.append({
+            'text': 'Мрежови услуги',
+            'quantity': 1,
+            'unit_price': netService_value,
+            'total': netService_value,
+            'calculated_total': netService_value,
+            'match': True
+        })  
+
     return rows
 # Функция за обработка на данните от фактурата
-def parse_factura(content, invoices_data=[]):
+def parse_factura(content, invoices_data=[],filename=""):
 
     
     invoice_data =  {'details': {}, 'objects': []} # вземи последния добавен речник
     # Разделяне на съдържанието на блоков
     blocks = content.split("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
-    
+    if filename:
+        invoice_data['filename'] = filename
     factura_data = []
 
     I=0
@@ -109,8 +125,16 @@ def parse_factura(content, invoices_data=[]):
         if I == 1:
             month = re.search(month_pattern, block)
             month_value= month.group(1).strip()
+
             inv_rows= parse_detail_rows(block)
-            invoice_data['details']={"month": month_value,  'rows': inv_rows }
+            #СОФИЯ 1612 Дебитно известие
+            doc_type=block.split("\n")[3].replace("СОФИЯ 1612", "").strip()
+            doc_number = block.split("\n")[4]
+            inv_number = block.split("\n")[5]
+            total_gose_amount = fixSum(re.search(r"Общо ([0-9\s.,]+)", block).group(1).strip())
+            invoice_data['details']={"month": month_value,  'rows': inv_rows , 'doc_type': doc_type,
+                                      'doc_number': doc_number, 'inv_number': inv_number,
+                                      'total_amount': total_gose_amount}
 
             continue
         
@@ -162,6 +186,7 @@ def parse_factura(content, invoices_data=[]):
             tmpblock_data["name"] =  period_data_value
             tmpblock_data["total_amount"] = total_amount_value
             # print("Total amount:", total_amount_value,"period_data_value",period_data_value, "Block:", I*1000+y)
+            t= [1]
             rows = parse_detail_rows(block_period)
 
             tmpblock_data["rows"] = rows
@@ -178,3 +203,19 @@ def save_to_json(data, output_file):
     with open(output_file, 'w', encoding='utf-8') as json_file:
         json.dump(data, json_file, ensure_ascii=False, indent=4)
 
+def main():
+    input_file = "0417257708_6000020124_signed.pdf.txt"
+    invoices_data = {"invoices": []}
+    with open(input_file, "r", encoding="utf-8") as file:
+        content = file.read()
+    # Парсване на фактурата
+    invoices_data = parse_factura(content, invoices_data, filename=input_file)
+    
+    # Записване на резултата в JSON файл
+    output_file = "invoices_data.json"
+    save_to_json(invoices_data, output_file)
+    
+    print(f"Данните са записани в {output_file}")
+
+if __name__ == "__main__":
+    main()

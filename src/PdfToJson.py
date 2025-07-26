@@ -27,9 +27,8 @@ def main():
             pdf_processor = PdfProcessor()
             extracted_text = pdf_processor.extract_text(pdf_path)      
             extracted_text = extracted_text.encode('latin1').decode('windows-1251')
-            factura_data['invoices'].append({"filename": pdf_file})
             # Извикване на функцията
-            factura_data = InvToJson.parse_factura(extracted_text, factura_data)
+            factura_data = InvToJson.parse_factura(extracted_text, factura_data, filename=pdf_file)
     InvToJson.save_to_json(factura_data, output_file)
 if __name__ == "__main__":
     main()
