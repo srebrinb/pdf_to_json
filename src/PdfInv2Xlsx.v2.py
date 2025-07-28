@@ -4,6 +4,7 @@ import argparse
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.chart import LineChart, Reference
+
 import locale
 from datetime import datetime
 from pdf_processor import PdfProcessor
@@ -173,12 +174,15 @@ def generate_excel(data_by_object_code, excel_path):
             sheet.append(["Адрес на обекта:", data["object_address"]])
             sheet.append([])  # Празен ред за разделяне       
                     # Добавяне на заглавия на таблицата
-            sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"],"Обща сума")
+            sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)","Обща сума",
+                           "Обща мощност (формула)","Коефициент на мощността (cosφ)", "CO₂ емисии (kg)","брой персонал", "Average emissions per employee", "Напрежение", "Ток", "Фазов ъгъл"
+                          ])
             # Добави заглавията в AA и AB
             sheet.cell(row=5, column=27).value = "checksum"
             sheet.cell(row=5, column=28).value = "Дата на запис"
- 
-        existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))  
+
+        existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))
+        staff_ = -1
         if object_code not in existing_keys:
             # Add hyperlink with style
             row_idx = sheetObj.max_row + 1
@@ -188,6 +192,11 @@ def generate_excel(data_by_object_code, excel_path):
             sheetObj.cell(row=row_idx, column=2).value = data["object_name"]
             sheetObj.cell(row=row_idx, column=3).value = data["object_address"]
             sheetObj.cell(row=row_idx, column=4).value = sheet["I6"].value
+
+        for row in sheetObj.iter_rows(min_row=2):  # Прескачаме заглавията
+            if object_code in str(row[0].value):  # колона 1 (A)
+                staff_ = row[3].value
+                break
         # Добавяне на редовете
         for row in data["rows"]:
              # Collect existing hash values from the per-object sheet (skip header rows)
@@ -207,6 +216,24 @@ def generate_excel(data_by_object_code, excel_path):
                 row_idx = sheet.max_row
                 sheet.cell(row=row_idx, column=27).value = hash_value
                 sheet.cell(row=row_idx, column=28).value = now.strftime("%Y-%m-%d %H:%M:%S")
+                for col in range(6, sheetObj.max_column + 1):
+                    
+                    source_cell = sheetObj.cell(row=2, column=col)
+                    formula = source_cell.value
+                    target_cell = sheet.cell(row=row_idx, column=col)
+                    if isinstance(formula, str):
+                        formula = formula.replace("C2", f"C{row_idx}")
+                        formula = formula.replace("D2", f"D{row_idx}")
+                        formula = formula.replace("K2", f"K{row_idx}")
+                        formula = formula.replace("F2", f"F{row_idx}")
+                        formula = formula.replace("I2", f"I{row_idx}")
+                        formula = formula.replace("H2", f"H{row_idx}")
+                        formula = formula.replace("staff", str(staff_))
+                        target_cell.value = formula
+                    else:
+                        target_cell.value = formula
+                    if source_cell.has_style:
+                        target_cell._style = source_cell._style
 
         # # Създаване на графика
         # chart = LineChart()
@@ -256,7 +283,7 @@ def simulate_pdf_extraction(pdf_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
-    parser.add_argument("excel_path", nargs="?", default="based.xlsx", help="Path to the output Excel file.")
+    parser.add_argument("excel_path", nargs="?", default="BookBase.xlsx", help="Path to the output Excel file.")
     parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
