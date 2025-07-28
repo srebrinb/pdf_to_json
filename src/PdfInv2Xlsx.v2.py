@@ -173,6 +173,9 @@ def generate_excel(data_by_object_code, excel_path):
             sheet.append([])  # Празен ред за разделяне       
                     # Добавяне на заглавия на таблицата
             sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"])
+            # Добави заглавията в AA и AB
+            sheet.cell(row=5, column=27).value = "checksum"
+            sheet.cell(row=5, column=28).value = "Дата на запис"
  
         existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))  
         if object_code not in existing_keys:
@@ -197,7 +200,12 @@ def generate_excel(data_by_object_code, excel_path):
            
 
             if hash_value not in existing_hash_keys:
-                sheet.append([row[0], row[1].strftime("%Y-%m"), row[2], row[3], hash_value, now.strftime("%Y-%m-%d %H:%M:%S")])
+                row_data = [row[0], row[1].strftime("%Y-%m"), row[2], row[3]]
+                sheet.append(row_data)
+                # Добави checksum и дата на запис в AA и AB
+                row_idx = sheet.max_row
+                sheet.cell(row=row_idx, column=27).value = hash_value
+                sheet.cell(row=row_idx, column=28).value = now.strftime("%Y-%m-%d %H:%M:%S")
 
         # # Създаване на графика
         # chart = LineChart()
@@ -233,7 +241,7 @@ def generate_excel(data_by_object_code, excel_path):
                     pass
             sheet.column_dimensions[column].width = max_length + 2
 
-    workbook.save(excel_path)
+    workbook.save("fill_"+excel_path)
 
 def simulate_pdf_extraction(pdf_path):
     """Симулира извличане на текст от PDF (заменете с реална логика)."""
@@ -247,7 +255,7 @@ def simulate_pdf_extraction(pdf_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
-    parser.add_argument("excel_path", nargs="?", default="Energi_2025_2.xlsx", help="Path to the output Excel file.")
+    parser.add_argument("excel_path", nargs="?", default="emissions-based.xlsx", help="Path to the output Excel file.")
     parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
