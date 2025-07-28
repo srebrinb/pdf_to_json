@@ -130,7 +130,7 @@ def process_pdfs(directory):
                             current_energy_sum3 += float(energy_part)
                         except ValueError:
                             pass
-                    if  match_sum and line.startswith("- - - - "):
+                    if  match_sum:
                         if object_code not in data_by_object_code:
                             data_by_object_code[object_code] = {
                                 "object_name": current_object_name,
@@ -183,9 +183,13 @@ def generate_excel(data_by_object_code, excel_path):
         # # Поставяне на графиката под таблицата
         # sheet.add_chart(chart, f"A{sheet.max_row + 2}")
 
-    # Премахване на празния sheet, ако съществува
-    if "Sheet" in workbook.sheetnames:
+    # Премахване на празния sheet, ако съществува и има други sheet-ове
+    if "Sheet" in workbook.sheetnames and len(workbook.sheetnames) > 1:
         del workbook["Sheet"]
+    elif "Sheet" in workbook.sheetnames and len(workbook.sheetnames) == 1:
+        # Ако няма данни, добави съобщение
+        sheet = workbook["Sheet"]
+        sheet.append(["Няма намерени данни за обекти."])
 
     workbook.save(excel_path)
 
