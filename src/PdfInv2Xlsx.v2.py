@@ -6,6 +6,7 @@ from openpyxl.chart import LineChart, Reference
 import locale
 from datetime import datetime
 from pdf_processor import PdfProcessor
+import zlib
 # locale.setlocale(locale.LC_TIME, 'bg_BG.UTF-8')  # Set to Bulgarian locale
 bg_months = {
     'Януари': 'January',
@@ -71,10 +72,15 @@ def process_pdfs(directory):
                 find_str_con2 = "Общо сума"
                 find_str_con3 = "Надбавка за използвана реактивна енергия"
                 match_sum = False
-
+                blocks = []
+                blocks.append([])  # Начало на нов блок
+                blockindex = 0
                 for line in extracted_text.splitlines():
                     line = line.strip()
-
+                    blocks[blockindex]+=line + "\n"
+                    if  line.startswith("- - - - "):
+                        blockindex += 1
+                        blocks.append([])
 
                     if line.startswith("Наименование на обекта:"):
                         current_object_name = line.replace("Наименование на обекта:", "").strip()
@@ -144,28 +150,56 @@ def process_pdfs(directory):
                         current_energy_sum3 = 0.0
                         current_energy_sum2 = 0.0
                         match_sum = False
+                # Записване на блоковете във файл
+                blocks.remove(blocks[-1])  # Премахване на последния празен блок
 
     return data_by_object_code
 
 def generate_excel(data_by_object_code, excel_path):
+    now = datetime.now()
     """Генерира Excel файл с таблици и графики за всеки обект."""
-    workbook = Workbook()
+    workbook = load_workbook(excel_path) if os.path.exists(excel_path) else Workbook()
+    
+    if "objects" in workbook.sheetnames:
+        sheetObj = workbook["objects"]
+    else:
+        sheetObj = workbook.create_sheet("objects")
+        sheetObj.append(["Код на обекта", "Име на обекта", "Адрес на обекта"])
+        
 
     for object_code, data in data_by_object_code.items():
-        sheet = workbook.create_sheet(title=object_code[:31])  # Ограничение на имената на sheet-овете до 31 символа
+        if object_code in workbook.sheetnames:
+            sheet = workbook[object_code]
+        else:
+            sheet = workbook.create_sheet(title=object_code[:31])  # Ограничение на имената на sheet-овете до 31 символа
+            # Добавяне на антетка
+            sheet.append(["Код на обекта:", object_code])
+            sheet.append(["Име на обекта:", data["object_name"]])
+            sheet.append(["Адрес на обекта:", data["object_address"]])
+            sheet.append([])  # Празен ред за разделяне       
+                    # Добавяне на заглавия на таблицата
+            sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"])
+ 
+        existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))  
+        print("Existing keys in objects sheet:", existing_keys)
+        if object_code not in existing_keys:
+            sheetObj.append([object_code, data["object_name"], data["object_address"]])
 
-        # Добавяне на антетка
-        sheet.append(["Код на обекта:", object_code])
-        sheet.append(["Име на обекта:", data["object_name"]])
-        sheet.append(["Адрес на обекта:", data["object_address"]])
-        sheet.append([])  # Празен ред за разделяне
-
-        # Добавяне на заглавия на таблицата
-        sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"])
 
         # Добавяне на редовете
         for row in data["rows"]:
-            sheet.append([row[0], row[1].strftime("%Y-%m"), row[2], row[3]])
+             # Collect existing hash values from the per-object sheet (skip header rows)
+            existing_hash_keys = set()
+            for r in sheet.iter_rows(min_row=6):  # Data starts from row 6
+                if len(r) > 4 and r[4].value is not None:
+                    existing_hash_keys.add(r[4].value)
+            hash_value = zlib.crc32(str(row[1].strftime("%Y-%m")).encode("utf-8")+
+                                    str(row[2]).encode("utf-8")+
+                                    str(row[3]).encode("utf-8"))
+           
+
+            if hash_value not in existing_hash_keys:
+                sheet.append([row[0], row[1].strftime("%Y-%m"), row[2], row[3], hash_value, now.strftime("%Y-%m-%d %H:%M:%S")])
 
         # # Създаване на графика
         # chart = LineChart()
@@ -201,7 +235,7 @@ def simulate_pdf_extraction(pdf_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
-    parser.add_argument("excel_path", nargs="?", default="Energi_2025.xlsx", help="Path to the output Excel file.")
+    parser.add_argument("excel_path", nargs="?", default="Energi_2025_2.xlsx", help="Path to the output Excel file.")
     parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
