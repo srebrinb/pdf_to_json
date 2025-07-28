@@ -2,6 +2,7 @@ import json
 import os
 import argparse
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font
 from openpyxl.chart import LineChart, Reference
 import locale
 from datetime import datetime
@@ -72,15 +73,10 @@ def process_pdfs(directory):
                 find_str_con2 = "Общо сума"
                 find_str_con3 = "Надбавка за използвана реактивна енергия"
                 match_sum = False
-                blocks = []
-                blocks.append([])  # Начало на нов блок
-                blockindex = 0
+
                 for line in extracted_text.splitlines():
                     line = line.strip()
-                    blocks[blockindex]+=line + "\n"
-                    if  line.startswith("- - - - "):
-                        blockindex += 1
-                        blocks.append([])
+
 
                     if line.startswith("Наименование на обекта:"):
                         current_object_name = line.replace("Наименование на обекта:", "").strip()
@@ -136,7 +132,7 @@ def process_pdfs(directory):
                             current_energy_sum3 += float(energy_part)
                         except ValueError:
                             pass
-                    if  match_sum and line.startswith("- - - - "):
+                    if  match_sum:
                         if object_code not in data_by_object_code:
                             data_by_object_code[object_code] = {
                                 "object_name": current_object_name,
@@ -150,8 +146,6 @@ def process_pdfs(directory):
                         current_energy_sum3 = 0.0
                         current_energy_sum2 = 0.0
                         match_sum = False
-                # Записване на блоковете във файл
-                blocks.remove(blocks[-1])  # Премахване на последния празен блок
 
     return data_by_object_code
 
@@ -181,10 +175,14 @@ def generate_excel(data_by_object_code, excel_path):
             sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"])
  
         existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))  
-        print("Existing keys in objects sheet:", existing_keys)
         if object_code not in existing_keys:
-            sheetObj.append([object_code, data["object_name"], data["object_address"]])
-
+            # Add hyperlink with style
+            row_idx = sheetObj.max_row + 1
+            cell = sheetObj.cell(row=row_idx, column=1)
+            cell.value = f'=HYPERLINK("#\'{object_code[:31]}\'!A1", "{object_code}")'
+            cell.font = Font(color="0000FF", underline="single")
+            sheetObj.cell(row=row_idx, column=2).value = data["object_name"]
+            sheetObj.cell(row=row_idx, column=3).value = data["object_address"]
 
         # Добавяне на редовете
         for row in data["rows"]:
@@ -220,6 +218,20 @@ def generate_excel(data_by_object_code, excel_path):
     # Премахване на празния sheet, ако съществува
     if "Sheet" in workbook.sheetnames:
         del workbook["Sheet"]
+
+    # Автоматично задаване на ширина на колоните според най-дългия текст
+    for sheet in workbook.worksheets:
+        for column_cells in sheet.columns:
+            max_length = 0
+            column = column_cells[0].column_letter
+            for cell in column_cells:
+                try:
+                    cell_length = len(str(cell.value)) if cell.value is not None else 0
+                    if cell_length > max_length:
+                        max_length = cell_length
+                except Exception:
+                    pass
+            sheet.column_dimensions[column].width = max_length + 2
 
     workbook.save(excel_path)
 
