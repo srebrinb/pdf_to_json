@@ -58,13 +58,14 @@ def process_pdfs(directory):
             print("############################################")
             print("Обработване на PDF файл:", pdf_file)
             # Запис във файл
-            txt_filename = pdf_file + ".txt"
-            with open(txt_filename, "w", encoding="utf-8") as f:
-                f.write(extracted_text)
+            # txt_filename = pdf_file + ".txt"
+            # with open(txt_filename, "w", encoding="utf-8") as f:
+            #     f.write(extracted_text)
             if extracted_text:
                 current_object_name = None
                 current_object_address = None
                 current_month = None
+                current_month_bg = None
                 current_energy_sum = 0.0
                 current_energy_sum2 = 0.0
                 current_energy_sum3 = 0.0
@@ -94,6 +95,7 @@ def process_pdfs(directory):
                     elif line.startswith("Основание: Електрическа енергия за месец"):
                         current_month = line.replace("Основание: Електрическа енергия за месец", "").strip()
                         print("Обработване на месец:", current_month)
+                        current_month_bg = current_month
                         current_month = bg_to_en_month(current_month)
 
                         current_month = datetime.strptime(current_month, "%B %Y")  # Преобразуване в дата
@@ -140,7 +142,7 @@ def process_pdfs(directory):
                                 "rows": []
                             }
                         data_by_object_code[object_code]["rows"].append([
-                            pdf_file, current_month, current_energy_sum, current_energy_sum3
+                            pdf_file, current_month, current_energy_sum, current_energy_sum3,current_energy_sum2,current_month_bg
                         ])
                         current_energy_sum = 0.0
                         current_energy_sum3 = 0.0
@@ -158,8 +160,7 @@ def generate_excel(data_by_object_code, excel_path):
         sheetObj = workbook["objects"]
     else:
         sheetObj = workbook.create_sheet("objects")
-        sheetObj.append(["Код на обекта", "Име на обекта", "Адрес на обекта"])
-        
+        sheetObj.append(["Код на обекта", "Име на обекта", "Адрес на обекта", "Брой персонал"])
 
     for object_code, data in data_by_object_code.items():
         if object_code in workbook.sheetnames:
@@ -172,7 +173,7 @@ def generate_excel(data_by_object_code, excel_path):
             sheet.append(["Адрес на обекта:", data["object_address"]])
             sheet.append([])  # Празен ред за разделяне       
                     # Добавяне на заглавия на таблицата
-            sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"])
+            sheet.append(["PDF Path", "За месец (Дата)", "Активна мощност (W)", "Реактивна мощност (W)"],"Обща сума")
             # Добави заглавията в AA и AB
             sheet.cell(row=5, column=27).value = "checksum"
             sheet.cell(row=5, column=28).value = "Дата на запис"
@@ -186,21 +187,21 @@ def generate_excel(data_by_object_code, excel_path):
             cell.font = Font(color="0000FF", underline="single")
             sheetObj.cell(row=row_idx, column=2).value = data["object_name"]
             sheetObj.cell(row=row_idx, column=3).value = data["object_address"]
-
+            sheetObj.cell(row=row_idx, column=4).value = sheet["I6"].value
         # Добавяне на редовете
         for row in data["rows"]:
              # Collect existing hash values from the per-object sheet (skip header rows)
             existing_hash_keys = set()
             for r in sheet.iter_rows(min_row=6):  # Data starts from row 6
-                if len(r) > 4 and r[4].value is not None:
-                    existing_hash_keys.add(r[4].value)
+                if len(r) > 27 and r[27].value is not None:
+                    existing_hash_keys.add(r[27].value)
             hash_value = zlib.crc32(str(row[1].strftime("%Y-%m")).encode("utf-8")+
                                     str(row[2]).encode("utf-8")+
                                     str(row[3]).encode("utf-8"))
            
 
             if hash_value not in existing_hash_keys:
-                row_data = [row[0], row[1].strftime("%Y-%m"), row[2], row[3]]
+                row_data = [row[0], row[5], row[2], row[3], row[4]]
                 sheet.append(row_data)
                 # Добави checksum и дата на запис в AA и AB
                 row_idx = sheet.max_row
@@ -255,7 +256,7 @@ def simulate_pdf_extraction(pdf_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
-    parser.add_argument("excel_path", nargs="?", default="emissions-based.xlsx", help="Path to the output Excel file.")
+    parser.add_argument("excel_path", nargs="?", default="based.xlsx", help="Path to the output Excel file.")
     parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
