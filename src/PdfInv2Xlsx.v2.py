@@ -135,10 +135,11 @@ def process_pdfs(directory):
                             current_energy_sum3 += float(energy_part)
                         except ValueError:
                             pass
-                    if  match_sum:
+                    if  current_energy_sum2:
                         if object_code not in data_by_object_code:
                             data_by_object_code[object_code] = {
-                                "object_name": current_object_name,
+                                "object_code": object_code,
+                                "object_name": object_name,
                                 "object_address": current_object_address,
                                 "rows": []
                             }
@@ -181,27 +182,40 @@ def generate_excel(data_by_object_code, excel_path):
             sheet.cell(row=5, column=27).value = "checksum"
             sheet.cell(row=5, column=28).value = "Дата на запис"
 
-        existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))
-        staff_ = -1
-        if object_code not in existing_keys:
-            # Add hyperlink with style
-            row_idx = sheetObj.max_row + 1
-            cell = sheetObj.cell(row=row_idx, column=1)
-            cell.value = f'=HYPERLINK("#\'{object_code[:31]}\'!A1", "{object_code}")'
-            cell.font = Font(color="0000FF", underline="single")
-            sheetObj.cell(row=row_idx, column=2).value = data["object_name"]
-            sheetObj.cell(row=row_idx, column=3).value = data["object_address"]
-            sheetObj.cell(row=row_idx, column=4).value = sheet["I6"].value
 
+        
+   
+        # existing_keys = set(row_obj[0].value for row_obj in sheetObj.iter_rows(min_row=2))
+        # if object_code not in existing_keys:
+        #     # Add hyperlink with style
+        #     row_idx = sheetObj.max_row + 1
+        #     cell = sheetObj.cell(row=row_idx, column=1)
+        #     cell.value = f'=HYPERLINK("#\'{object_code[:31]}\'!A1", "{object_code}")'
+        #     cell.font = Font(color="0000FF", underline="single")
+        #     sheetObj.cell(row=row_idx, column=2).value = data["object_name"]
+        #     sheetObj.cell(row=row_idx, column=3).value = data["object_address"]
+        #     sheetObj.cell(row=row_idx, column=4).value = sheet["I6"].value
+
+        staff_ = -1
         for row in sheetObj.iter_rows(min_row=2):  # Прескачаме заглавията
             if object_code in str(row[0].value):  # колона 1 (A)
                 staff_ = row[3].value
                 break
+        if staff_ == -1:
+            print(f"Не е намерен персонал за обект {object_code}.")
+            # Add hyperlink with style
+            row_idx = sheetObj.max_row + 1
+            cell = sheetObj.cell(row=row_idx, column=1)
+            cell.value = f'=HYPERLINK("#\'{object_code[:31]}\'!A1", "{object_code}")'
+            cell.font = Font(color="FF0000", underline="single")
+            sheetObj.cell(row=row_idx, column=2).value = data["object_name"]
+            sheetObj.cell(row=row_idx, column=3).value = data["object_address"]    
+
         # Добавяне на редовете
         for row in data["rows"]:
              # Collect existing hash values from the per-object sheet (skip header rows)
             existing_hash_keys = set()
-            for r in sheet.iter_rows(min_row=6):  # Data starts from row 6
+            for r in sheet.iter_rows(min_row=5):  # Data starts from row 6
                 if len(r) > 27 and r[27].value is not None:
                     existing_hash_keys.add(r[27].value)
             hash_value = zlib.crc32(str(row[1].strftime("%Y-%m")).encode("utf-8")+
@@ -211,13 +225,13 @@ def generate_excel(data_by_object_code, excel_path):
 
             if hash_value not in existing_hash_keys:
                 row_data = [row[0], row[5], row[2], row[3], row[4]]
+
                 sheet.append(row_data)
                 # Добави checksum и дата на запис в AA и AB
                 row_idx = sheet.max_row
                 sheet.cell(row=row_idx, column=27).value = hash_value
                 sheet.cell(row=row_idx, column=28).value = now.strftime("%Y-%m-%d %H:%M:%S")
                 for col in range(6, sheetObj.max_column + 1):
-                    
                     source_cell = sheetObj.cell(row=2, column=col)
                     formula = source_cell.value
                     target_cell = sheet.cell(row=row_idx, column=col)
@@ -228,12 +242,20 @@ def generate_excel(data_by_object_code, excel_path):
                         formula = formula.replace("F2", f"F{row_idx}")
                         formula = formula.replace("I2", f"I{row_idx}")
                         formula = formula.replace("H2", f"H{row_idx}")
-                        formula = formula.replace("staff", str(staff_))
+                        formula = formula.replace("staff", f"{staff_}")
                         target_cell.value = formula
                     else:
                         target_cell.value = formula
                     if source_cell.has_style:
                         target_cell._style = source_cell._style
+            else:
+                print("hash_value not in existing_hash_keys")
+       # sheet.cell(row=4, column=3).value = f"=AVERAGEIFS(C7:C19; I7:I19; I7)"  # Примерна формула за изчисляване на средна стойност
+        cell = sheet.cell(row=4, column=3)
+        cell.font = Font(color="000000")
+        cell.value = "=AVERAGEIFS(C6:C{}, I6:I{}, I6)".format(sheet.max_row, sheet.max_row) # Примерна формула за изчисляване на средна стойност
+
+
 
         # # Създаване на графика
         # chart = LineChart()
@@ -267,7 +289,7 @@ def generate_excel(data_by_object_code, excel_path):
                         max_length = cell_length
                 except Exception:
                     pass
-            sheet.column_dimensions[column].width = max_length + 2
+                sheet.column_dimensions[column].width = max_length + 2
 
     workbook.save("fill_"+excel_path)
 
@@ -284,7 +306,7 @@ def simulate_pdf_extraction(pdf_path):
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
     parser.add_argument("excel_path", nargs="?", default="BookBase.xlsx", help="Path to the output Excel file.")
-    parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
+    parser.add_argument("pdf_directory", nargs="?", default="StefanP", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
     if not os.path.isdir(args.pdf_directory):
