@@ -75,67 +75,66 @@ def process_pdfs(directory):
                 find_str_con2 = "Общо сума"
                 find_str_con3 = "Надбавка за използвана реактивна енергия"
                 match_sum = False
+                blocks = extracted_text.split("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
+                for block in blocks:
+                    for line in block.splitlines():
+                        line = line.strip()
+                        if line.startswith("Наименование на обекта:"):
+                            current_object_name = line.replace("Наименование на обекта:", "").strip()
+                            if current_object_name:
+                                parts = current_object_name.rsplit(" ", 1)
+                                if len(parts) == 2:
+                                    object_code = parts[1]
+                                    object_name = parts[0]
+                                else:
+                                    object_code = current_object_name
+                                    object_name = ""
+                        elif line.startswith("Адрес на обекта:"):
+                            current_object_address = line.replace("Адрес на обекта: ", "").strip()
+                            current_object_address = current_object_address.replace("Кодов номер:", "").strip()
+                        elif line.startswith("Основание: Електрическа енергия за месец"):
+                            current_month = line.replace("Основание: Електрическа енергия за месец", "").strip()
+                            print("Обработване на месец:", current_month)
+                            current_month_bg = current_month
+                            current_month = bg_to_en_month(current_month)
 
-                for line in extracted_text.splitlines():
-                    line = line.strip()
-
-
-                    if line.startswith("Наименование на обекта:"):
-                        current_object_name = line.replace("Наименование на обекта:", "").strip()
-                        if current_object_name:
-                            parts = current_object_name.rsplit(" ", 1)
-                            if len(parts) == 2:
-                                object_code = parts[1]
-                                object_name = parts[0]
-                            else:
-                                object_code = current_object_name
-                                object_name = ""
-                    elif line.startswith("Адрес на обекта:"):
-                        current_object_address = line.replace("Адрес на обекта: ", "").strip()
-                        current_object_address = current_object_address.replace("Кодов номер:", "").strip()
-                    elif line.startswith("Основание: Електрическа енергия за месец"):
-                        current_month = line.replace("Основание: Електрическа енергия за месец", "").strip()
-                        print("Обработване на месец:", current_month)
-                        current_month_bg = current_month
-                        current_month = bg_to_en_month(current_month)
-
-                        current_month = datetime.strptime(current_month, "%B %Y")  # Преобразуване в дата
-                    elif line.startswith(find_str_con1):
-                        line = line.replace(find_str_con1, "").strip()
-                        if "кВтч" in line:
-                            energy_part = line.split("кВтч")[0].strip()
+                            current_month = datetime.strptime(current_month, "%B %Y")  # Преобразуване в дата
+                        elif line.startswith(find_str_con1):
+                            line = line.replace(find_str_con1, "").strip()
+                            if "кВтч" in line:
+                                energy_part = line.split("кВтч")[0].strip()
+                                energy_part = energy_part.replace(" ", "")
+                                energy_part = energy_part[::-1]
+                                energy_part = energy_part.lstrip("0")
+                                try:
+                                    current_energy_sum += float(energy_part)
+                                    
+                                except ValueError:
+                                    pass
+                        elif line.startswith(find_str_con2):
+                            line = line.replace(find_str_con2, "").strip()
+                            line = line.replace(",", "").strip()
+                            energy_part = line
                             energy_part = energy_part.replace(" ", "")
                             energy_part = energy_part[::-1]
                             energy_part = energy_part.lstrip("0")
                             try:
-                                current_energy_sum += float(energy_part)
-                                
+                                current_energy_sum2 += float(energy_part)
+                                match_sum = True
                             except ValueError:
                                 pass
-                    elif line.startswith(find_str_con2):
-                        line = line.replace(find_str_con2, "").strip()
-                        line = line.replace(",", "").strip()
-                        energy_part = line
-                        energy_part = energy_part.replace(" ", "")
-                        energy_part = energy_part[::-1]
-                        energy_part = energy_part.lstrip("0")
-                        try:
-                            current_energy_sum2 += float(energy_part)
-                            match_sum = True
-                        except ValueError:
-                            pass
-                    elif line.startswith(find_str_con3):
-                        line = line.replace(find_str_con3, "").strip()
-                        if "кВАрч" in line:
-                            energy_part = line.split("кВАрч")[0].strip()
-                            energy_part = energy_part.replace(" ", "")
-                            energy_part = energy_part[::-1]
-                            energy_part = energy_part.lstrip("0")
-                        try:
-                            current_energy_sum3 += float(energy_part)
-                        except ValueError:
-                            pass
-                    if  current_energy_sum2:
+                        elif line.startswith(find_str_con3):
+                            line = line.replace(find_str_con3, "").strip()
+                            if "кВАрч" in line:
+                                energy_part = line.split("кВАрч")[0].strip()
+                                energy_part = energy_part.replace(" ", "")
+                                energy_part = energy_part[::-1]
+                                energy_part = energy_part.lstrip("0")
+                            try:
+                                current_energy_sum3 += float(energy_part)
+                            except ValueError:
+                                pass
+                    if  match_sum:
                         if object_code not in data_by_object_code:
                             data_by_object_code[object_code] = {
                                 "object_code": object_code,
@@ -284,12 +283,14 @@ def generate_excel(data_by_object_code, excel_path):
             column = column_cells[0].column_letter
             for cell in column_cells:
                 try:
-                    cell_length = len(str(cell.value)) if cell.value is not None else 0
+                    cell_length = len(str(cell.value )) if cell.value is not None else 0
                     if cell_length > max_length:
                         max_length = cell_length
+                    if max_length > 20:  # Ограничаване на максималната ширина
+                        max_length = 20
                 except Exception:
                     pass
-                sheet.column_dimensions[column].width = max_length + 2
+            sheet.column_dimensions[column].width = max_length + 2
 
     workbook.save("fill_"+excel_path)
 
@@ -306,7 +307,7 @@ def simulate_pdf_extraction(pdf_path):
 def main():
     parser = argparse.ArgumentParser(description="Process multiple PDF files and save data to an Excel file.")
     parser.add_argument("excel_path", nargs="?", default="BookBase.xlsx", help="Path to the output Excel file.")
-    parser.add_argument("pdf_directory", nargs="?", default="StefanP", help="Path to the directory containing PDF files.")
+    parser.add_argument("pdf_directory", nargs="?", default="test", help="Path to the directory containing PDF files.")
     args = parser.parse_args()
 
     if not os.path.isdir(args.pdf_directory):
